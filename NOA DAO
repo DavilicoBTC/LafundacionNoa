@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DAO Global de Protectoras de Animales - NOA$</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f0f0f0;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .header {
+            text-align: center;
+            padding: 20px;
+            background-color: #4CAF50;
+            color: white;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+        .wallet-section {
+            background-color: white;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+        .proposals-section {
+            background-color: white;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+        .proposal {
+            border: 1px solid #ddd;
+            padding: 15px;
+            margin-bottom: 10px;
+            border-radius: 5px;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        button:hover {
+            opacity: 0.8;
+        }
+        input {
+            padding: 10px;
+            margin: 5px;
+            width: 200px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>DAO Global de Protectoras de Animales 🐾</h1>
+            <p>Token: NOA$ | Red: Polygon Mumbai</p>
+        </div>
+
+        <!-- Sección de Conexión de Billetera -->
+        <div class="wallet-section">
+            <h2>🔗 Conectar Billetera</h2>
+            <button id="connectWallet">Conectar MetaMask</button>
+            <p id="walletStatus">Estado: No conectado</p>
+            <p id="tokenBalance">Balance NOA$: 0</p>
+        </div>
+
+        <!-- Sección de Donaciones -->
+        <div class="wallet-section">
+            <h2>💵 Donar a la DAO</h2>
+            <input type="number" id="donationAmount" placeholder="Cantidad en MATIC">
+            <button onclick="donate()">Donar</button>
+        </div>
+
+        <!-- Sección de Propuestas -->
+        <div class="proposals-section">
+            <h2>📜 Propuestas Activas</h2>
+            <div id="proposalsList"></div>
+            
+            <h2>➕ Crear Nueva Propuesta</h2>
+            <input type="text" id="propDescription" placeholder="Descripción">
+            <input type="number" id="propAmount" placeholder="Cantidad (MATIC)">
+            <input type="text" id="propRecipient" placeholder="Dirección del Destinatario">
+            <button onclick="createProposal()">Crear Propuesta</button>
+        </div>
+    </div>
+
+    <script src="https://cdn.ethers.io/lib/ethers-5.2.umd.min.js"></script>
+    <script>
+        let provider, signer, noaContract, votingContract, treasuryContract;
+        let userAddress;
+
+        // Direcciones de los contratos (¡Actualizar con tus direcciones!)
+        const NOA_ADDRESS = "0x...";
+        const VOTING_ADDRESS = "0x...";
+        const TREASURY_ADDRESS = "0x...";
+
+        // ABI de los contratos (¡Actualizar con tus ABIs!)
+        const NOA_ABI = [/* ABI del contrato NOA$ */];
+        const VOTING_ABI = [/* ABI del contrato Voting */];
+        const TREASURY_ABI = [/* ABI del contrato Treasury */];
+
+        // Conectar billetera
+        document.getElementById("connectWallet").onclick = async () => {
+            if (window.ethereum) {
+                provider = new ethers.providers.Web3Provider(window.ethereum);
+                await provider.send("eth_requestAccounts", []);
+                signer = provider.getSigner();
+                userAddress = await signer.getAddress();
+                
+                noaContract = new ethers.Contract(NOA_ADDRESS, NOA_ABI, signer);
+                votingContract = new ethers.Contract(VOTING_ADDRESS, VOTING_ABI, signer);
+                treasuryContract = new ethers.Contract(TREASURY_ADDRESS, TREASURY_ABI, signer);
+
+                document.getElementById("walletStatus").textContent = `Conectado: ${userAddress.slice(0,6)}...${userAddress.slice(-4)}`;
+                updateBalance();
+                loadProposals();
+            }
+        };
+
+        // Actualizar balance de NOA$
+        async function updateBalance() {
+            const balance = await noaContract.balanceOf(userAddress);
+            document.getElementById("tokenBalance").textContent = `Balance NOA$: ${ethers.utils.formatUnits(balance, 18)}`;
+        }
+
+        // Cargar propuestas
+        async function loadProposals() {
+            const proposalCount = await votingContract.proposalCount();
+            let proposalsHTML = "";
+            
+            for (let i = 1; i <= proposalCount; i++) {
+                const prop = await votingContract.proposals(i);
+                proposalsHTML += `
+                    <div class="proposal">
+                        <h3>Propuesta #${prop.id}: ${prop.description}</h3>
+                        <p>Monto: ${ethers.utils.formatEther(prop.amount)} MATIC</p>
+                        <p>Votos: ${prop.votes}</p>
+                        <button onclick="vote(${prop.id})">Votar con NOA$</button>
+                        ${prop.executed ? '<em>Ejecutada</em>' : '<button onclick="executeProposal(${prop.id})">Ejecutar</button>'}
+                    </div>
+                `;
+            }
+            document.getElementById("proposalsList").innerHTML = proposalsHTML;
+        }
+
+        // Donar a la DAO
+        async function donate() {
+            const amount = document.getElementById("donationAmount").value;
+            const tx = await treasuryContract.deposit({ value: ethers.utils.parseEther(amount) });
+            await tx.wait();
+            alert("¡Donación exitosa! Gracias por tu apoyo 🐶");
+        }
+
+        // Crear propuesta (solo owner)
+        async function createProposal() {
+            const description = document.getElementById("propDescription").value;
+            const amount = ethers.utils.parseEther(document.getElementById("propAmount").value);
+            const recipient = document.getElementById("propRecipient").value;
+            
+            const tx = await votingContract.createProposal(description, amount, recipient);
+            await tx.wait();
+            loadProposals();
+        }
+
+        // Votar por una propuesta
+        async function vote(proposalId) {
+            const votes = prompt("Introduce la cantidad de NOA$ a votar:");
+            const tx = await votingContract.vote(proposalId, ethers.utils.parseUnits(votes, 18));
+            await tx.wait();
+            loadProposals();
+        }
+
+        // Ejecutar propuesta (solo owner)
+        async function executeProposal(proposalId) {
+            const tx = await votingContract.executeProposal(proposalId);
+            await tx.wait();
+            loadProposals();
+        }
+    </script>
+</body>
+</html>
